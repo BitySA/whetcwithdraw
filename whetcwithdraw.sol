@@ -151,7 +151,7 @@ contract WhitehatWithdraw is Owned {
     /// Only people who are considered certified depositors like the whitehat ETC multisig
     /// or addresses owned by exchanges should be able to deposit more ETC for withdrals.
     /// If you need to become a certified depositor please contact Bity SA.
-    function deposit() onlyOwner returns (bool) {
+    function deposit() returns (bool) {
         if (!certifiedDepositors[msg.sender]) {
             throw;
         }

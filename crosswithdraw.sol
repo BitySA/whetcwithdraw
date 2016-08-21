@@ -113,20 +113,6 @@ contract CrossWhitehatWithdraw is Owned {
     }
 
     function kill() onlyOwner {
-        uint i;
-        for (i=0; i<operations.length; i++) {
-            Operation op = operations[i];
-            op.dth =0;
-            op.etcBeneficiary =0;
-            op.percentage=0;
-            op.queryTime=0;
-            op.answerTime=0;
-            op.result=0;
-            op.dthTxHash=0;
-        }
-        operations.length=0;
-        bot=0;
-        price=0;
         selfdestruct(owner);
     }
 

@@ -29,6 +29,8 @@ exports.deploy = function(opts, cb) {
                 opts._whg_donation,
                 opts._daoBalanceSnapshotAddress,
                 opts._botAddress,
+                opts._escapeAddress,
+                opts._remainingBeneficiary,
                 cb);
         }
    ], function(err, _withdraw) {

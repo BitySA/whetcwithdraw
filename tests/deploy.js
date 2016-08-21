@@ -39,7 +39,9 @@ describe('Deploy Test', function() {
         simplewithdrawHelper.deploy({
             _whg_donation: ethConnector.accounts[2],
             _daoBalanceSnapshotAddress: snapshot.address,
-            _botAddress: ethConnector.accounts[0]
+            _botAddress: ethConnector.accounts[0],
+            _escapeAddress: ethConnector.accounts[2],
+            _remainingBeneficiary: ethConnector.accounts[2]
         }, function(err, contract) {
             assert.ifError(err);
             assert.ok(contract);

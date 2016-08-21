@@ -44,18 +44,27 @@ contract WhitehatWithdraw is Owned {
     mapping (address => uint) paidOut;
     mapping (address => bool) certifiedDepositors;
     uint totalFunds;
+    uint deployTime;
     address whg_donation;
     address bot;
+    address escape;
+    address remainingBeneficary;
 
-    event Withdraw(address indexed dth, uint256  amountToDth, uint256 amountToWhg);
+    event Withdraw(address indexed dth, address indexed beneficiary, uint256  amountToDth, uint256 amountToWhg);
     event CertifiedDepositorsChanged(address indexed _depositor, bool _allowed);
     event Deposit(uint amount);
+    event EscapeCalled(uint amount);
+    event RemainingClaimed(uint amount);
 
-    function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _botAddress) {
+    function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _botAddress, address _escapeAddress, address _remainingBeneficiary) {
         whg_donation = _whg_donation;
         daoBalance = DAOBalanceSnapShot(_daoBalanceSnapshotAddress);
         bot = _botAddress;
+        escape = _escapeAddress;
+        remainingBeneficary = _remainingBeneficiary;
+
         totalFunds = msg.value;
+        deployTime = now;
 
         // both the owner and the whitehat multisig can perform deposits to this contract
         certifiedDepositors[0x1ac729d2db43103faf213cb9371d6b42ea7a830f] = true;
@@ -109,7 +118,7 @@ contract WhitehatWithdraw is Owned {
             throw;
         }
 
-        Withdraw(_beneficiary,  portionDth, portionWhg);
+        Withdraw(_dth, _beneficiary,  portionDth, portionWhg);
     }
 
     /// The simple withdraw function, where the message sender is considered as
@@ -156,6 +165,25 @@ contract WhitehatWithdraw is Owned {
         totalFunds += msg.value;
         Deposit(msg.value);
         return true;
+    }
+
+    /// Last Resort call, to allow for a reaction if something bad happens to
+    /// the contract or if some security issue is uncovered.
+    function escapeHatch() noEther onlyOwner returns (bool) {
+        uint total = this.balance;
+        escape.send(total);
+        EscapeCalled(total);
+    }
+
+    /// Allows the claiming of the remaining funds after a given amount of time
+    /// Amount is set to 6 months for now but may still change in the future.
+    function claimRemaining() noEther returns (bool) {
+        if (now < deployTime + 24 weeks) {
+            throw;
+        }
+        uint total = this.balance;
+        remainingBeneficary.send(total);
+        RemainingClaimed(total);
     }
 
     function () { //no donations

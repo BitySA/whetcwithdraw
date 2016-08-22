@@ -161,7 +161,7 @@ describe('Deploy Test', function() {
 	    function(cb) {
 		ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
 	    }, function(cb) {
-		withdraw.withdraw(100, ethConnector.accounts[1], {from: ethConnector.accounts[1]}, cb);
+		    withdraw.withdraw(ethConnector.accounts[1], 0, {from: ethConnector.accounts[1]}, cb);
 	    }, function(cb) {
 		ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
 	    },
@@ -185,7 +185,7 @@ describe('Deploy Test', function() {
             } , function(cb) {
                 ethConnector.web3.eth.getBalance(ethConnector.accounts[2], cb);
             } , function(cb) {
-		        withdraw.withdraw(60, ethConnector.accounts[0], {from: ethConnector.accounts[0]}, cb);
+		        withdraw.withdraw(ethConnector.accounts[0], 40, {from: ethConnector.accounts[0]}, cb);
 	        }, function(cb) {
 		        ethConnector.web3.eth.getBalance(ethConnector.accounts[0], cb);
 	        }, function(cb) {
@@ -247,7 +247,7 @@ describe('Deploy Test', function() {
 	        }, function(cb) {
 		        withdraw.getPaidOut(ethConnector.accounts[1], cb);
 	        }, function(cb) {
-		        withdraw.withdraw(100, ethConnector.accounts[1], {from: ethConnector.accounts[1]}, cb);
+		        withdraw.withdraw(ethConnector.accounts[1], 0, {from: ethConnector.accounts[1]}, cb);
 	        }, function(cb) {
 		        ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
 	        },
@@ -278,7 +278,7 @@ describe('Deploy Test', function() {
             } , function(cb) {
 		        withdraw.getPaidOut(ethConnector.accounts[0], cb);
             } , function(cb) {
-		        withdraw.withdraw(70, ethConnector.accounts[0], {from: ethConnector.accounts[0]}, cb);
+		        withdraw.withdraw(ethConnector.accounts[0], 30, {from: ethConnector.accounts[0]}, cb);
 	        }, function(cb) {
 		        ethConnector.web3.eth.getBalance(ethConnector.accounts[0], cb);
 	        }, function(cb) {

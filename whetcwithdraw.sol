@@ -38,7 +38,12 @@ contract Owned {
 }
 
 contract WhitehatWithdraw is Owned {
-    /// The balances of the DTH taken in the snapshot block. TBD
+    enum WithdrawType {
+        DIRECT,
+        PROXY,
+        BOT,
+        MANUAL
+    }
 
     DAOBalanceSnapShot daoBalance;
     mapping (address => uint) paidOut;
@@ -50,7 +55,7 @@ contract WhitehatWithdraw is Owned {
     address escape;
     address remainingBeneficary;
 
-    event Withdraw(address indexed dth, address indexed beneficiary, uint256  amountToDth, uint256 amountToWhg);
+    event Withdraw(address indexed dth, address indexed beneficiary, uint256  amount, uint256 percentageWHG, WithdrawType withdrawType);
     event CertifiedDepositorsChanged(address indexed _depositor, bool _allowed);
     event Deposit(uint amount);
     event EscapeCalled(uint amount);
@@ -89,16 +94,17 @@ contract WhitehatWithdraw is Owned {
 
     /// The core of the withdraw functionality. It is called by all other withdraw functions
     ///
-    /// @param _percentage    The percentage of the funds that the DTH wants to keep
-    ///                       for himself. It should be a number ranging from 0
-    ///                       to 100. Anything not claimed by the DTH will be going
-    ///                       as a donation to the Whitehat Group.
     /// @param _dth           The address of the DAO token holder for whom the
     ///                       withdrawal is going to happen
     /// @param _beneficiary   The address that will receive the _percentage of
     ///                       the funds corresponding to the _dth.
-    function commonWithdraw(uint _percentage, address _dth, address _beneficiary) internal {
-        if (_percentage > 100) {
+    /// @param _percentageWHG The percentage of the funds that will be donated to the
+    ///                       White Hat Group. It should be a number ranging from 0
+    ///                       to 100. Anything not claimed by the DTH will be going
+    ///                       as a donation to the Whitehat Group.
+    /// @param _withdrawType  method used to withdraw (1) Direct (2) Proxy (3) bot (4) owner
+    function commonWithdraw(address _dth, address _beneficiary, uint _percentageWHG, WithdrawType _withdrawType) internal {
+        if (_percentageWHG > 100) {
             return;
         }
 
@@ -107,37 +113,38 @@ contract WhitehatWithdraw is Owned {
             return;
         }
 
-        if (toPay > this.balance)
+        if (toPay > this.balance) {
             toPay = this.balance;
+        }
 
-        uint portionDth = toPay * _percentage / 100;
-        uint portionWhg = toPay - portionDth;
+        uint portionWhg = toPay * _percentageWHG / 100;
+        uint portionDth = toPay - portionWhg;
         paidOut[_dth] += toPay;
 
         if ( !whg_donation.send(portionWhg) ||  !_beneficiary.send(portionDth) ) {
             throw;
         }
 
-        Withdraw(_dth, _beneficiary,  portionDth, portionWhg);
+        Withdraw(_dth, _beneficiary,  toPay, _percentageWHG, _withdrawType);
     }
 
     /// The simple withdraw function, where the message sender is considered as
     /// the DAO token holder whose ratio needs to be retrieved.
-    function withdraw(uint _percentage, address _beneficiary) noEther {
-        commonWithdraw(_percentage, msg.sender, _beneficiary);
+    function withdraw(address _beneficiary, uint _percentageWHG ) noEther {
+        commonWithdraw(msg.sender, _beneficiary, _percentageWHG, WithdrawType.DIRECT);
     }
 
     /// The proxy withdraw function. Anyone can call this for someone else as long
     /// as he includes signed data retrieved by using web3.eth.sign(address, hash).
     /// The DAO token holder whose ratio needs to be retrieved is determined by
     /// performing ecrecover on the signed data.
-    function proxyWithdraw(uint _percentage, address _beneficiary, uint8 _v, bytes32 _r, bytes32 _s) noEther {
-        bytes32 _hash = sha3("Withdraw DAOETC to ", _beneficiary, _percentage);
+    function proxyWithdraw(address _beneficiary, uint _percentageWHG, uint8 _v, bytes32 _r, bytes32 _s) noEther {
+        bytes32 _hash = sha3("Withdraw DAOETC to ", _beneficiary, _percentageWHG);
         address _dth = ecrecover(_hash, _v, _r, _s);
-        commonWithdraw(_percentage, _dth, _beneficiary);
+        commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType.PROXY);
     }
 
-    /// The bot withdraw function is a function that the only "the bot" can call.
+    /// The bot withdraw function is a function that only "the bot" can call.
     /// Once a user who does not use the ETC chain has used the bot withdraw the
     /// bot will use this function to perform withdrawal for that user.
     ///
@@ -145,11 +152,11 @@ contract WhitehatWithdraw is Owned {
     /// chain and would rather prove ownership in the ETH chain and provide a beneciary
     /// ETC address for the bot to withdraw to. This could allow for people to withdraw
     /// directly to an exchange's deposit address without sycnronizing the ETC chain.
-    function botWithdraw(uint _percentage, address _dth, address _beneficiary) noEther {
+    function botWithdraw(address _dth, address _beneficiary, uint _percentageWHG) noEther {
         if (msg.sender != bot) {
             throw;
         }
-        commonWithdraw(_percentage, _dth, _beneficiary);
+        commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType.BOT);
     }
 
     /// This is the only way to send money to the contract, adding to the total
@@ -171,7 +178,9 @@ contract WhitehatWithdraw is Owned {
     /// the contract or if some security issue is uncovered.
     function escapeHatch() noEther onlyOwner returns (bool) {
         uint total = this.balance;
-        escape.send(total);
+        if (!escape.send(total)) {
+            throw;
+        }
         EscapeCalled(total);
     }
 
@@ -182,7 +191,9 @@ contract WhitehatWithdraw is Owned {
             throw;
         }
         uint total = this.balance;
-        remainingBeneficary.send(total);
+        if (!remainingBeneficary.send(total)) {
+            throw;
+        }
         RemainingClaimed(total);
     }
 

@@ -35,12 +35,12 @@ contract CrossWhitehatWithdraw is Owned {
     struct Operation {
         address dth;
         address etcBeneficiary;
-        uint percentage;
+        uint percentageWHG;
         uint queryTime;
 
         uint answerTime;
         uint result;
-        bytes32 dthTxHash;
+        bytes32 etcTxHash;
     }
 
     function CrossWhitehatWithdraw(uint _price, address _bot) Owned() {
@@ -48,26 +48,26 @@ contract CrossWhitehatWithdraw is Owned {
         bot = _bot;
     }
 
-    function withdraw(address _etcBeneficiary, uint _percentage) returns (uint) {
-        if (_percentage > 100) throw;
+    function withdraw(address _etcBeneficiary, uint _percentageWHG) returns (uint) {
+        if (_percentageWHG > 100) throw;
         if (msg.value < price) throw;
         Operation op = operations[operations.length ++];
         op.dth = msg.sender;
         op.etcBeneficiary = _etcBeneficiary;
-        op.percentage = _percentage;
+        op.percentageWHG = _percentageWHG;
         op.queryTime = now;
-        Withdraw(op.dth, op.etcBeneficiary, op.percentage, operations.length -1);
+        Withdraw(op.dth, op.etcBeneficiary, op.percentageWHG, operations.length -1);
 
         return operations.length -1;
     }
 
-    function setResult(uint _idOperation, uint _result, bytes32 _dthTxHash) onlyBot noEther {
+    function setResult(uint _idOperation, uint _result, bytes32 _etcTxHash) onlyBot noEther {
         Operation op = operations[_idOperation];
         if (op.dth == 0) throw;
         op.answerTime = now;
         op.result = _result;
-        op.dthTxHash = _dthTxHash;
-        WithdrawResult(_idOperation, _dthTxHash, _result);
+        op.etcTxHash = _etcTxHash;
+        WithdrawResult(_idOperation, _etcTxHash, _result);
     }
 
     function setBot(address _bot) onlyOwner noEther  {
@@ -88,7 +88,7 @@ contract CrossWhitehatWithdraw is Owned {
 
     function getOperation(uint _idOperation) noEther constant returns (address dth,
         address etcBeneficiary,
-        uint percentage,
+        uint percentageWHG,
         uint queryTime,
         uint answerTime,
         uint result,
@@ -97,11 +97,11 @@ contract CrossWhitehatWithdraw is Owned {
         Operation op = operations[_idOperation];
         return (op.dth,
                 op.etcBeneficiary,
-                op.percentage,
+                op.percentageWHG,
                 op.queryTime,
                 op.answerTime,
                 op.result,
-                op.dthTxHash);
+                op.etcTxHash);
     }
 
     function getOperationsNumber() noEther constant returns (uint) {
@@ -116,8 +116,8 @@ contract CrossWhitehatWithdraw is Owned {
         selfdestruct(owner);
     }
 
-    event Withdraw(address indexed dth, address indexed beneficiary, uint percentage, uint proposal);
-    event WithdrawResult(uint indexed proposal, bytes32 indexed hash, uint result);
+    event Withdraw(address indexed dth, address indexed beneficiary, uint percentageWHG, uint proposal);
+    event WithdrawResult(uint indexed proposal, bytes32 indexed etcTxHash, uint result);
 
 
 }

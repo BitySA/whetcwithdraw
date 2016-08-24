@@ -1,10 +1,9 @@
 // The contract that allows DTH to withdraw funds that the white hat
 // group has managed to retrieve.
 //
-// There are 3 ways to use the contract:
+// There are 2 ways to use the contract:
 // 1. withdraw()
 // 2. proxyWithdraw()
-// 3. botWithdraw()
 //
 // For a description of each method, take a look at the docstrings.
 //
@@ -41,7 +40,6 @@ contract WhitehatWithdraw is Owned {
     enum WithdrawType {
         DIRECT,
         PROXY,
-        BOT,
         MANUAL
     }
 
@@ -138,25 +136,15 @@ contract WhitehatWithdraw is Owned {
     /// as he includes signed data retrieved by using web3.eth.sign(address, hash).
     /// The DAO token holder whose ratio needs to be retrieved is determined by
     /// performing ecrecover on the signed data.
+    ///
+    /// This function will also allow people to use the ETH chain to give an
+    /// approval for withdrawal in the ETC chain without having to sync the
+    /// ETC chain. The only requirement is that the account that gives the
+    /// approval needs to be an end-user account. Multisig wallets can't do that.
     function proxyWithdraw(address _beneficiary, uint _percentageWHG, uint8 _v, bytes32 _r, bytes32 _s) noEther {
         bytes32 _hash = sha3("Withdraw DAOETC to ", _beneficiary, _percentageWHG);
         address _dth = ecrecover(_hash, _v, _r, _s);
         commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType.PROXY);
-    }
-
-    /// The bot withdraw function is a function that only "the bot" can call.
-    /// Once a user who does not use the ETC chain has used the bot withdraw the
-    /// bot will use this function to perform withdrawal for that user.
-    ///
-    /// Bot Withdrawal is primarily for users who do not want to synchronize the ETC
-    /// chain and would rather prove ownership in the ETH chain and provide a beneciary
-    /// ETC address for the bot to withdraw to. This could allow for people to withdraw
-    /// directly to an exchange's deposit address without sycnronizing the ETC chain.
-    function botWithdraw(address _dth, address _beneficiary, uint _percentageWHG) noEther {
-        if (msg.sender != bot) {
-            throw;
-        }
-        commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType.BOT);
     }
 
     /// This is the only way to send money to the contract, adding to the total

@@ -28,7 +28,7 @@ exports.deploy = function(opts, cb) {
                 // start arguments
                 opts._whg_donation,
                 opts._daoBalanceSnapshotAddress,
-                opts._botAddress,
+                opts._authorizedAddressesAddress,
                 opts._escapeAddress,
                 opts._remainingBeneficiary,
                 cb);

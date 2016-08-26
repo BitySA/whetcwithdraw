@@ -3,6 +3,7 @@
 var ethConnector = require('./js/eth_connector');
 var simplewithdrawHelper = require('./js/simplewithdraw_helper');
 var snapshotHelper = require('./js/dao_balance_snapshot_helper');
+var aa_helper = require('./js/authorized_address_helper');
 var assert = require('assert');
 var async = require('async');
 var BigNumber = require('bignumber.js');
@@ -29,14 +30,31 @@ var g_ratios;
 var g_total_deposit = new BigNumber(0);
 var whgAccIdx = 9;
 var whgAcc;
+var proxyCallerIdx = 8;
+var proxyCallerAcc;
 
-function generateBalances() {
+function setupAcccounts() {
     g_total = new BigNumber(100000000000000);
-    g_ratios = [ new BigNumber(0.1), new BigNumber(0.2), new BigNumber(0.4), new BigNumber(0.3)];
+    g_ratios = [
+        new BigNumber(0.1),
+        new BigNumber(0.2),
+        new BigNumber(0.2),
+        new BigNumber(0.18),
+        new BigNumber(0.12),
+        new BigNumber(0),
+        new BigNumber(0.06),
+        new BigNumber(0.14)
+    ];
+    var ratios_total = g_ratios.reduceRight(function(a,b){return a.add(b);});
+    if (!ratios_total.equals(new BigNumber(1.0))) {
+        console.log("The ratios total does not add up to 1.0. It's " + ratios_total+ ". Fix that!");
+    }
+
     whgAcc = ethConnector.accounts[whgAccIdx];
+    proxyCallerAcc = ethConnector.accounts[proxyCallerIdx];
     for (var i = 0; i < g_ratios.length; i++) {
-	g_balances[i] = g_total.mul(g_ratios[i]);
-	g_snapshot_balances[i] = [D160.mul(g_balances[i]).add(ethConnector.accounts[i]).toString(10)];
+	    g_balances[i] = g_total.mul(g_ratios[i]);
+	    g_snapshot_balances[i] = [D160.mul(g_balances[i]).add(ethConnector.accounts[i]).toString(10)];
     }
 }
 
@@ -79,6 +97,8 @@ function signIntent(address, beneficiary, percentage, cb) {
 describe('Deploy Test', function() {
     var snapshot;
     var withdraw;
+    var authorized_addresses;
+
     before(function(done) {
         ethConnector.init('testrpc',done);
     });
@@ -94,13 +114,45 @@ describe('Deploy Test', function() {
         });
     });
 
+    it('should deploy and fill authorized addresses snapshot', function(done) {
+        this.timeout(40000);
+        authorized_addresses = aa_helper.deploy({
+        }, function(err, contract) {
+            assert.ifError(err);
+            assert.ok(contract);
+            authorized_addresses = contract;
+
+	        async.series([
+	            function(cb) {
+		            authorized_addresses.fill(
+                        [
+                            ethConnector.accounts[4], ethConnector.accounts[5],
+                            ethConnector.accounts[6], ethConnector.accounts[7]
+                        ], {from: ethConnector.accounts[0], gas: 90000}, cb
+                    );
+	            }, function(cb) {
+                    authorized_addresses.seal({from: ethConnector.accounts[0], gas: 90000}, cb);
+	            }, function(cb) {
+                    authorized_addresses.getRepresentedDTH(ethConnector.accounts[5], cb);
+	            }, function(cb) {
+                    authorized_addresses.getRepresentedDTH(ethConnector.accounts[7], cb);
+                },
+	        ], function (err, results) {
+		        assert.ifError(err);
+                assert.equal(results[2], ethConnector.accounts[4], "Address mismatch");
+                assert.equal(results[3], ethConnector.accounts[6], "Address mismatch");
+		        done();
+            });
+        });
+    });
+
     it('should deploy Withdraw Contract', function(done) {
         this.timeout(40000);
-	    generateBalances();
+	    setupAcccounts();
         simplewithdrawHelper.deploy({
             _whg_donation: whgAcc,
             _daoBalanceSnapshotAddress: snapshot.address,
-            _botAddress: ethConnector.accounts[9],
+            _authorizedAddressesAddress: authorized_addresses.address,
             _escapeAddress: ethConnector.accounts[9],
             _remainingBeneficiary: ethConnector.accounts[9]
         }, function(err, contract) {
@@ -131,16 +183,15 @@ describe('Deploy Test', function() {
 
     it('query balanceSnapshot contract', function(done) {
         this.timeout(40000);
-        snapshot.balanceOf(ethConnector.accounts[0],
-                           function (err, balance) {
-                               assert.ifError(err);
-			       expectNumbersEqual(
-				   g_balances[0],
-                                   balance,
-                                   "Balance mismatch"
-                               );
-                               done();
-                           });
+        snapshot.balanceOf(ethConnector.accounts[0], function (err, balance) {
+            assert.ifError(err);
+			expectNumbersEqual(
+				g_balances[0],
+                balance,
+                "Balance mismatch"
+            );
+            done();
+        });
     });
 
     it('should deposit in the withdraw contract', function(done) {
@@ -289,7 +340,7 @@ describe('Deploy Test', function() {
                         sres.v,
                         sres.r,
                         sres.s,
-                        {from: ethConnector.accounts[9]},
+                        {from: proxyCallerAcc},
                         cb
                     );
     	        }, function(cb) {
@@ -334,7 +385,7 @@ describe('Deploy Test', function() {
                         sres.v,
                         sres.r,
                         sres.s,
-                        {from: ethConnector.accounts[9]},
+                        {from: proxyCallerAcc},
                         cb
                     );
     	        }, function(cb) {
@@ -363,6 +414,112 @@ describe('Deploy Test', function() {
 
     });
 
+    it('should sign and use proxyWithdraw to get 87% of ones portion from an authorized address', function(done) {
+        this.timeout(40000);
+        var percentageWHG = 13;
+        // Account [4] has authorized account [5] to withdraw for it
+	    signIntent(ethConnector.accounts[5], ethConnector.accounts[5], percentageWHG, function (err, sres) {
+            async.series([
+                function(cb) {
+                    ethConnector.web3.eth.getBalance(ethConnector.accounts[5], cb);
+                }, function(cb) {
+                    ethConnector.web3.eth.getBalance(whgAcc, cb);
+                }, function(cb) {
+    		        withdraw.proxyWithdraw(
+                        ethConnector.accounts[5],
+                        percentageWHG,
+                        sres.v,
+                        sres.r,
+                        sres.s,
+                        {from: proxyCallerAcc},
+                        cb
+                    );
+    	        }, function(cb) {
+    		        ethConnector.web3.eth.getBalance(ethConnector.accounts[5], cb);
+    	        }, function(cb) {
+    		        ethConnector.web3.eth.getBalance(whgAcc, cb);
+    	        },
+            ], function (err, results) {
+                assert.ifError(err);
+    	        var oldBalanceAcc = new BigNumber(results[0]);
+    	        var oldBalanceWHG = new BigNumber(results[1]);
+    	        var newBalanceAcc = new BigNumber(results[3]);
+    	        var newBalanceWHG = new BigNumber(results[4]);
+
+                expectDiffToBe(
+                    newBalanceAcc, oldBalanceAcc, g_ratios[4].mul(g_total_deposit).mul(0.87),
+                    "Did not withdraw the expected amount of ETH"
+                );
+                expectDiffToBe(
+                    newBalanceWHG, oldBalanceWHG, g_ratios[4].mul(g_total_deposit).mul(0.13),
+                    "Did not donate the expected amount of ETH"
+                );
+    	        done();
+            });
+        });
+
+    });
+
+    it('should sign and use proxyWithdraw to get 93% of ones portion from an authorized address which also has DAO balance', function(done) {
+        this.timeout(40000);
+        var percentageWHG = 7;
+        // Account [6] has authorized account [7] to withdraw for it and both accounts have a DAO balance
+	    signIntent(ethConnector.accounts[7], ethConnector.accounts[7], percentageWHG, function (err, sres) {
+            async.series([
+                function(cb) {
+                    ethConnector.web3.eth.getBalance(ethConnector.accounts[6], cb);
+                }, function(cb) {
+                    ethConnector.web3.eth.getBalance(ethConnector.accounts[7], cb);
+                }, function(cb) {
+                    ethConnector.web3.eth.getBalance(whgAcc, cb);
+                }, function(cb) {
+    		        withdraw.proxyWithdraw(
+                        ethConnector.accounts[7],
+                        percentageWHG,
+                        sres.v,
+                        sres.r,
+                        sres.s,
+                        {from: proxyCallerAcc},
+                        cb
+                    );
+                }, function(cb) {
+                    ethConnector.web3.eth.getBalance(ethConnector.accounts[6], cb);
+    	        }, function(cb) {
+    		        ethConnector.web3.eth.getBalance(ethConnector.accounts[7], cb);
+    	        }, function(cb) {
+    		        ethConnector.web3.eth.getBalance(whgAcc, cb);
+    	        },
+            ], function (err, results) {
+                assert.ifError(err);
+    	        var oldBalanceOrigAcc = new BigNumber(results[0]);
+    	        var oldBalanceAcc = new BigNumber(results[1]);
+    	        var oldBalanceWHG = new BigNumber(results[2]);
+    	        var newBalanceOrigAcc = new BigNumber(results[4]);
+    	        var newBalanceAcc = new BigNumber(results[5]);
+    	        var newBalanceWHG = new BigNumber(results[6]);
+                var ratio = g_ratios[6].add(g_ratios[7]);
+                expectDiffToBe(
+                    newBalanceAcc, oldBalanceAcc, ratio.mul(g_total_deposit).mul(0.93),
+                    "Did not withdraw the expected amount of ETH"
+                );
+                expectDiffToBe(
+                    newBalanceWHG, oldBalanceWHG, ratio.mul(g_total_deposit).mul(0.07),
+                    "Did not donate the expected amount of ETH"
+                );
+                expectDiffToBe(
+                    newBalanceOrigAcc, oldBalanceOrigAcc, new BigNumber(0),
+                    "The original account should not get anything, all should go to the authorized one"
+                );
+    	        done();
+            });
+        });
+
+    });
+
+
+    /* -- From here on down we are depositing more funds in the withdraw contract -- */
+
+
     it('should deposit from a newly certified account', function(done) {
         this.timeout(40000);
         var fundsToDeposit = ethConnector.web3.toWei(20, 'ether');
@@ -375,9 +532,9 @@ describe('Deploy Test', function() {
     	    }, function(cb) {
                 withdraw.deposit({from: ethConnector.accounts[1], value: fundsToDeposit}, cb);
     	    }, function(cb) {
-    		withdraw.getTotalFunds(cb);
+    		    withdraw.getTotalFunds(cb);
     	    }, function(cb) {
-    		withdraw.isCertifiedDepositor(ethConnector.accounts[1], cb);
+    		    withdraw.isCertifiedDepositor(ethConnector.accounts[1], cb);
             },
     	], function (err, results) {
             assert.ifError(err);
@@ -397,13 +554,13 @@ describe('Deploy Test', function() {
 	    var previous_deposit = ethConnector.web3.toWei(10, 'ether');
     	async.series([
     	    function(cb) {
-    		ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
+    		    ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
     	    }, function(cb) {
-    		withdraw.getPaidOut(ethConnector.accounts[1], cb);
+    		    withdraw.getPaidOut(ethConnector.accounts[1], cb);
     	    }, function(cb) {
-    		withdraw.withdraw(ethConnector.accounts[1], 0, {from: ethConnector.accounts[1]}, cb);
+    		    withdraw.withdraw(ethConnector.accounts[1], 0, {from: ethConnector.accounts[1]}, cb);
     	    }, function(cb) {
-    		ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
+    		    ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
     	    },
     	], function (err, results) {
     	    assert.ifError(err);
@@ -433,13 +590,13 @@ describe('Deploy Test', function() {
             } , function(cb) {
                 ethConnector.web3.eth.getBalance(whgAcc, cb);
             } , function(cb) {
-    		withdraw.getPaidOut(ethConnector.accounts[0], cb);
+    		    withdraw.getPaidOut(ethConnector.accounts[0], cb);
             } , function(cb) {
-    		withdraw.withdraw(ethConnector.accounts[0], 30, {from: ethConnector.accounts[0]}, cb);
+    		    withdraw.withdraw(ethConnector.accounts[0], 30, {from: ethConnector.accounts[0]}, cb);
     	    }, function(cb) {
-    		ethConnector.web3.eth.getBalance(ethConnector.accounts[0], cb);
+    		    ethConnector.web3.eth.getBalance(ethConnector.accounts[0], cb);
     	    }, function(cb) {
-    		ethConnector.web3.eth.getBalance(whgAcc, cb);
+    		    ethConnector.web3.eth.getBalance(whgAcc, cb);
     	    },
         ], function (err, results) {
             assert.ifError(err);
@@ -449,11 +606,11 @@ describe('Deploy Test', function() {
     	    var newBalanceAcc = new BigNumber(results[4]);
     	    var newBalanceWHG = new BigNumber(results[5]);
 
-	    expectNumbersEqual(
-		g_ratios[0].mul(previous_deposit),
-		paidOut,
-		"Mismatch in what should have already been paid out"
-	    );
+	        expectNumbersEqual(
+		        g_ratios[0].mul(previous_deposit),
+		        paidOut,
+		        "Mismatch in what should have already been paid out"
+	        );
             expectDiffToBe(
                 newBalanceAcc, oldBalanceAcc, g_ratios[0].mul(g_total_deposit).minus(paidOut).mul(0.7),
                 "Did not withdraw the expected amount of ETH"
@@ -486,7 +643,7 @@ describe('Deploy Test', function() {
                         sres.v,
                         sres.r,
                         sres.s,
-                        {from: ethConnector.accounts[9]},
+                        {from: proxyCallerAcc},
                         cb
                     );
     	        }, function(cb) {

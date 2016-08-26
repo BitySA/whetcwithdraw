@@ -14,6 +14,9 @@ contract DAOBalanceSnapShot {
     function totalSupply() constant returns(uint );
 }
 
+contract AuthorizedAddresses {
+    function getRepresentedDTH(address _authorizedAddress) constant returns(address _dth);
+}
 
 contract Owned {
     /// Prevents methods from perfoming any value transfer
@@ -37,32 +40,33 @@ contract Owned {
 }
 
 contract WhitehatWithdraw is Owned {
-    enum WithdrawType {
-        DIRECT,
-        PROXY,
-        MANUAL
-    }
+    uint constant WithdrawType_DIRECT = 1;
+    uint constant WithdrawType_PROXY = 2;
+    uint constant WithdrawType_PROXY_AUTHORIZED = 3;
 
     DAOBalanceSnapShot daoBalance;
+    AuthorizedAddresses authorizedAddresses;
     mapping (address => uint) paidOut;
     mapping (address => bool) certifiedDepositors;
+    mapping (bytes32 => bool) usedSignatures;
+    mapping (address => bool) blacklist;
     uint totalFunds;
     uint deployTime;
     address whg_donation;
-    address bot;
     address escape;
     address remainingBeneficary;
 
-    event Withdraw(address indexed dth, address indexed beneficiary, uint256  amount, uint256 percentageWHG, WithdrawType withdrawType);
+    event Withdraw(address indexed dth, address indexed beneficiary, uint256  amount, uint256 percentageWHG, uint256 withdrawType);
     event CertifiedDepositorsChanged(address indexed _depositor, bool _allowed);
+    event BlacklistChanged(address indexed _dth, bool _blocked);
     event Deposit(uint amount);
     event EscapeCalled(uint amount);
     event RemainingClaimed(uint amount);
 
-    function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _botAddress, address _escapeAddress, address _remainingBeneficiary) {
+    function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _authorizedAddressesAddress, address _escapeAddress, address _remainingBeneficiary) {
         whg_donation = _whg_donation;
         daoBalance = DAOBalanceSnapShot(_daoBalanceSnapshotAddress);
-        bot = _botAddress;
+        authorizedAddresses = AuthorizedAddresses(_authorizedAddressesAddress);
         escape = _escapeAddress;
         remainingBeneficary = _remainingBeneficiary;
 
@@ -101,9 +105,14 @@ contract WhitehatWithdraw is Owned {
     ///                       to 100. Anything not claimed by the DTH will be going
     ///                       as a donation to the Whitehat Group.
     /// @param _withdrawType  method used to withdraw (1) Direct (2) Proxy (3) bot (4) owner
-    function commonWithdraw(address _dth, address _beneficiary, uint _percentageWHG, WithdrawType _withdrawType) internal {
+    function commonWithdraw(address _dth, address _beneficiary, uint _percentageWHG, uint _withdrawType) internal {
+
+        if (blacklist[_dth]) {
+            throw;
+        }
+
         if (_percentageWHG > 100) {
-            return;
+            throw;
         }
 
         uint toPay = calculateWithdraw(_dth);
@@ -119,6 +128,8 @@ contract WhitehatWithdraw is Owned {
         uint portionDth = toPay - portionWhg;
         paidOut[_dth] += toPay;
 
+        // re-entrancy is not possible due to the use of send() which limits
+        // the forwarded gas thanks to the gas stipend
         if ( !whg_donation.send(portionWhg) ||  !_beneficiary.send(portionDth) ) {
             throw;
         }
@@ -129,7 +140,7 @@ contract WhitehatWithdraw is Owned {
     /// The simple withdraw function, where the message sender is considered as
     /// the DAO token holder whose ratio needs to be retrieved.
     function withdraw(address _beneficiary, uint _percentageWHG ) noEther {
-        commonWithdraw(msg.sender, _beneficiary, _percentageWHG, WithdrawType.DIRECT);
+        commonWithdraw(msg.sender, _beneficiary, _percentageWHG, WithdrawType_DIRECT);
     }
 
     /// The proxy withdraw function. Anyone can call this for someone else as long
@@ -142,9 +153,17 @@ contract WhitehatWithdraw is Owned {
     /// ETC chain. The only requirement is that the account that gives the
     /// approval needs to be an end-user account. Multisig wallets can't do that.
     function proxyWithdraw(address _beneficiary, uint _percentageWHG, uint8 _v, bytes32 _r, bytes32 _s) noEther {
+        if (usedSignatures[_r]) {
+            throw;
+        }
         bytes32 _hash = sha3("Withdraw DAOETC to ", _beneficiary, _percentageWHG);
         address _dth = ecrecover(_hash, _v, _r, _s);
-        commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType.PROXY);
+        usedSignatures[_r] = true;
+        commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType_PROXY);
+        address representedDth = authorizedAddresses.getRepresentedDTH(_dth);
+        if (representedDth != 0x0) {
+            commonWithdraw(representedDth, _beneficiary, _percentageWHG, WithdrawType_PROXY_AUTHORIZED);
+        }
     }
 
     /// This is the only way to send money to the contract, adding to the total
@@ -205,10 +224,6 @@ contract WhitehatWithdraw is Owned {
         return whg_donation;
     }
 
-    function getBotAddress() noEther constant returns (address) {
-        return bot;
-    }
-
     function isCertifiedDepositor(address _depositor) noEther constant returns (bool) {
         return certifiedDepositors[_depositor];
     }
@@ -216,6 +231,16 @@ contract WhitehatWithdraw is Owned {
     function changeCertifiedDepositors(address _depositor, bool _allowed) onlyOwner noEther external returns (bool _success) {
         certifiedDepositors[_depositor] = _allowed;
         CertifiedDepositorsChanged(_depositor, _allowed);
+        return true;
+    }
+
+    function isBlacklisted(address _dth) noEther constant returns (bool) {
+        return blacklist[_dth];
+    }
+
+    function changeBlacklist(address _dth, bool _blocked) onlyOwner noEther external returns (bool _success) {
+        blacklist[_dth] = _blocked;
+        BlacklistChanged(_dth, _blocked);
         return true;
     }
 }

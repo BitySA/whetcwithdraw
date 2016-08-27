@@ -52,6 +52,7 @@ contract WhitehatWithdraw is Owned {
     mapping (address => bool) blacklist;
     uint totalFunds;
     uint deployTime;
+    uint closingTime;
     address whg_donation;
     address escape;
     address remainingBeneficary;
@@ -72,6 +73,7 @@ contract WhitehatWithdraw is Owned {
 
         totalFunds = msg.value;
         deployTime = now;
+        closingTime = 24 weeks;
 
         // both the owner and the whitehat multisig can perform deposits to this contract
         certifiedDepositors[0x1ac729d2db43103faf213cb9371d6b42ea7a830f] = true;
@@ -194,7 +196,7 @@ contract WhitehatWithdraw is Owned {
     /// Allows the claiming of the remaining funds after a given amount of time
     /// Amount is set to 6 months for now but may still change in the future.
     function claimRemaining() noEther returns (bool) {
-        if (now < deployTime + 24 weeks) {
+        if (now < deployTime + closingTime) {
             throw;
         }
         uint total = this.balance;
@@ -202,6 +204,13 @@ contract WhitehatWithdraw is Owned {
             throw;
         }
         RemainingClaimed(total);
+    }
+
+    /// Allows the option to extend (but not shorten!) the closingTime of the
+    /// contract to more than 6 months, perhaps even to infinity if that is
+    /// deemed as the best choice for the DAO Token holders.
+    function extendClosingTime(uint _additionalSeconds) noEther onlyOwner {
+        closingTime += _additionalSeconds;
     }
 
     function () { //no donations

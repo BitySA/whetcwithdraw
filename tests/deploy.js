@@ -197,6 +197,7 @@ describe('Deploy Test', function() {
     it('should deposit in the withdraw contract', function(done) {
         this.timeout(40000);
         var fundsToDeposit = ethConnector.web3.toWei(10, 'ether');
+        g_total_deposit = new BigNumber(fundsToDeposit);
 	    async.series([
 	        function(cb) {
 		        withdraw.deposit({from: ethConnector.accounts[0], value: fundsToDeposit}, cb);
@@ -211,24 +212,6 @@ describe('Deploy Test', function() {
                 "Total funds mismatch"
 		    );
 		    done();
-        });
-    });
-
-    it('should fail to deposit from non-certified account', function(done) {
-        this.timeout(40000);
-        var fundsToDeposit = ethConnector.web3.toWei(10, 'ether');
-	    g_total_deposit = g_total_deposit.add(fundsToDeposit);
-	    async.series([
-	        function(cb) {
-                    withdraw.getTotalFunds(cb);
-	        }, function(cb) {
-		    withdraw.deposit({from: ethConnector.accounts[1], value: fundsToDeposit}, cb);
-	        }, function(cb) {
-		    withdraw.getTotalFunds(cb);
-            },
-	    ], function (err, results) {
-            assert.equal(err, "Error: VM Exception while executing transaction: invalid JUMP");
-            done();
         });
     });
 
@@ -272,11 +255,11 @@ describe('Deploy Test', function() {
 
     	async.series([
     	    function(cb) {
-    		ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
+    		    ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
     	    }, function(cb) {
     		    withdraw.withdraw(ethConnector.accounts[1], 0, {from: ethConnector.accounts[1]}, cb);
     	    }, function(cb) {
-    		ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
+    		    ethConnector.web3.eth.getBalance(ethConnector.accounts[1], cb);
     	    },
     	], function (err, results) {
     	    assert.ifError(err);
@@ -520,27 +503,22 @@ describe('Deploy Test', function() {
     /* -- From here on down we are depositing more funds in the withdraw contract -- */
 
 
-    it('should deposit from a newly certified account', function(done) {
+    it('should deposit additional funds', function(done) {
         this.timeout(40000);
         var fundsToDeposit = ethConnector.web3.toWei(20, 'ether');
 	    g_total_deposit = g_total_deposit.add(fundsToDeposit);
     	async.series([
     	    function(cb) {
-    		withdraw.getTotalFunds(cb);
-            }, function(cb) {
-    		withdraw.changeCertifiedDepositors(ethConnector.accounts[1], true, {from: ethConnector.accounts[0]}, cb);
+    		    withdraw.getTotalFunds(cb);
     	    }, function(cb) {
                 withdraw.deposit({from: ethConnector.accounts[1], value: fundsToDeposit}, cb);
     	    }, function(cb) {
     		    withdraw.getTotalFunds(cb);
-    	    }, function(cb) {
-    		    withdraw.isCertifiedDepositor(ethConnector.accounts[1], cb);
             },
     	], function (err, results) {
             assert.ifError(err);
             var oldTotal = new BigNumber(results[0]);
-            var newTotal = new BigNumber(results[3]);
-            assert(results[4], "Account should now be a certified depositor");
+            var newTotal = new BigNumber(results[2]);
             assert(
                 newTotal.minus(oldTotal).equals(fundsToDeposit),
                 "Should have deposited the correct amount"

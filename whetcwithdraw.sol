@@ -47,9 +47,7 @@ contract WhitehatWithdraw is Owned {
     DAOBalanceSnapShot daoBalance;
     AuthorizedAddresses authorizedAddresses;
     mapping (address => uint) paidOut;
-    mapping (address => bool) certifiedDepositors;
     mapping (bytes32 => bool) usedSignatures;
-    mapping (address => bool) blacklist;
     uint totalFunds;
     uint deployTime;
     uint closingTime;
@@ -59,7 +57,6 @@ contract WhitehatWithdraw is Owned {
 
     event Withdraw(address indexed dth, address indexed beneficiary, uint256  amount, uint256 percentageWHG, uint256 withdrawType);
     event CertifiedDepositorsChanged(address indexed _depositor, bool _allowed);
-    event BlacklistChanged(address indexed _dth, bool _blocked);
     event Deposit(uint amount);
     event EscapeCalled(uint amount);
     event RemainingClaimed(uint amount);
@@ -74,10 +71,6 @@ contract WhitehatWithdraw is Owned {
         totalFunds = msg.value;
         deployTime = now;
         closingTime = 24 weeks;
-
-        // both the owner and the whitehat multisig can perform deposits to this contract
-        certifiedDepositors[0x1ac729d2db43103faf213cb9371d6b42ea7a830f] = true;
-        certifiedDepositors[msg.sender] = true;
     }
 
     /// Calculates the remaining funds available for a DTH to withdraw
@@ -108,11 +101,6 @@ contract WhitehatWithdraw is Owned {
     ///                       as a donation to the Whitehat Group.
     /// @param _withdrawType  method used to withdraw (1) Direct (2) Proxy (3) bot (4) owner
     function commonWithdraw(address _dth, address _beneficiary, uint _percentageWHG, uint _withdrawType) internal {
-
-        if (blacklist[_dth]) {
-            throw;
-        }
-
         if (_percentageWHG > 100) {
             throw;
         }
@@ -170,14 +158,7 @@ contract WhitehatWithdraw is Owned {
 
     /// This is the only way to send money to the contract, adding to the total
     /// amount of ETH to be refunded.
-    ///
-    /// Only people who are considered certified depositors like the whitehat ETC multisig
-    /// or addresses owned by exchanges should be able to deposit more ETC for withdrals.
-    /// If you need to become a certified depositor please contact Bity SA.
     function deposit() returns (bool) {
-        if (!certifiedDepositors[msg.sender]) {
-            throw;
-        }
         totalFunds += msg.value;
         Deposit(msg.value);
         return true;
@@ -231,25 +212,5 @@ contract WhitehatWithdraw is Owned {
 
     function getWHGDonationAddress() noEther constant returns (address) {
         return whg_donation;
-    }
-
-    function isCertifiedDepositor(address _depositor) noEther constant returns (bool) {
-        return certifiedDepositors[_depositor];
-    }
-
-    function changeCertifiedDepositors(address _depositor, bool _allowed) onlyOwner noEther external returns (bool _success) {
-        certifiedDepositors[_depositor] = _allowed;
-        CertifiedDepositorsChanged(_depositor, _allowed);
-        return true;
-    }
-
-    function isBlacklisted(address _dth) noEther constant returns (bool) {
-        return blacklist[_dth];
-    }
-
-    function changeBlacklist(address _dth, bool _blocked) onlyOwner noEther external returns (bool _success) {
-        blacklist[_dth] = _blocked;
-        BlacklistChanged(_dth, _blocked);
-        return true;
     }
 }

@@ -48,12 +48,33 @@ contract WhitehatWithdraw is Owned {
     address whg_donation;
     address escape;
     address remainingBeneficary;
+    bool sealed;
 
     event Withdraw(address indexed dth, address indexed beneficiary, uint256  amount, uint256 percentageWHG, uint256 withdrawType);
     event CertifiedDepositorsChanged(address indexed _depositor, bool _allowed);
     event Deposit(uint amount);
     event EscapeCalled(uint amount);
     event RemainingClaimed(uint amount);
+
+
+    function fill(uint[] data) onlyOwner {
+        if ((msg.sender != owner)||(sealed))
+            throw;
+
+        for (uint i=0; i< data.length; i+= 2) {
+            address dth = address(data[i]);
+            uint amount = uint(data[i+1]);
+            paidOut[dth] = amount;
+            totalFunds += amount;
+        }
+    }
+
+    function seal() {
+        if ((msg.sender != owner)||(sealed))
+            throw;
+
+        sealed= true;
+    }
 
     function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _escapeAddress, address _remainingBeneficiary) {
         whg_donation = _whg_donation;
@@ -113,8 +134,17 @@ contract WhitehatWithdraw is Owned {
 
         // re-entrancy is not possible due to the use of send() which limits
         // the forwarded gas thanks to the gas stipend
-        if ( !whg_donation.send(portionWhg) ||  !_beneficiary.send(portionDth) ) {
-            throw;
+
+        if (portionWhg > 0) {
+             if ( !whg_donation.send(portionWhg) ) {
+                throw;
+             }
+        }
+
+        if (portionDth > 0) {
+            if (!_beneficiary.send(portionDth) ) {
+                throw;
+            }
         }
 
         Withdraw(_dth, _beneficiary,  toPay, _percentageWHG, _withdrawType);

@@ -14,10 +14,6 @@ contract DAOBalanceSnapShot {
     function totalSupply() constant returns(uint );
 }
 
-contract AuthorizedAddresses {
-    function getRepresentedDTH(address _authorizedAddress) constant returns(address _dth);
-}
-
 contract Owned {
     /// Prevents methods from perfoming any value transfer
     modifier noEther() {if (msg.value > 0) throw; _}
@@ -42,10 +38,8 @@ contract Owned {
 contract WhitehatWithdraw is Owned {
     uint constant WithdrawType_DIRECT = 1;
     uint constant WithdrawType_PROXY = 2;
-    uint constant WithdrawType_PROXY_AUTHORIZED = 3;
 
     DAOBalanceSnapShot daoBalance;
-    AuthorizedAddresses authorizedAddresses;
     mapping (address => uint) paidOut;
     mapping (bytes32 => bool) usedSignatures;
     uint totalFunds;
@@ -61,10 +55,9 @@ contract WhitehatWithdraw is Owned {
     event EscapeCalled(uint amount);
     event RemainingClaimed(uint amount);
 
-    function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _authorizedAddressesAddress, address _escapeAddress, address _remainingBeneficiary) {
+    function WhitehatWithdraw(address _whg_donation, address _daoBalanceSnapshotAddress, address _escapeAddress, address _remainingBeneficiary) {
         whg_donation = _whg_donation;
         daoBalance = DAOBalanceSnapShot(_daoBalanceSnapshotAddress);
-        authorizedAddresses = AuthorizedAddresses(_authorizedAddressesAddress);
         escape = _escapeAddress;
         remainingBeneficary = _remainingBeneficiary;
 
@@ -150,10 +143,6 @@ contract WhitehatWithdraw is Owned {
         address _dth = ecrecover(_hash, _v, _r, _s);
         usedSignatures[_r] = true;
         commonWithdraw(_dth, _beneficiary, _percentageWHG, WithdrawType_PROXY);
-        address representedDth = authorizedAddresses.getRepresentedDTH(_dth);
-        if (representedDth != 0x0) {
-            commonWithdraw(representedDth, _beneficiary, _percentageWHG, WithdrawType_PROXY_AUTHORIZED);
-        }
     }
 
     /// This is the only way to send money to the contract, adding to the total

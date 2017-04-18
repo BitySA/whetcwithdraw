@@ -211,6 +211,8 @@ contract WhitehatWithdraw is Owned {
     /// deemed as the best choice for the DAO Token holders.
     function extendClosingTime(uint _additionalSeconds) noEther onlyOwner {
         closingTime += _additionalSeconds;
+        if (closingTime<_additionalSeconds) // Prevent overflow.
+            throw;
     }
 
     function () { //no donations
